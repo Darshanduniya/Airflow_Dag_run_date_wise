@@ -1,0 +1,52 @@
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime
+from airflow.hooks.postgres_hook import PostgresHook
+from tabulate import tabulate
+
+# Define your DAG
+default_args = {
+    'owner': 'your_name',
+    'start_date': datetime(2023, 10, 11),
+    'retries': 1,
+}
+
+dag = DAG(
+    'query_postgres_and_display_dags',
+    default_args=default_args,
+    schedule_interval=None,  # You can set an appropriate schedule interval here
+)
+
+def query_postgres_and_display_dags(**kwargs):
+    today = datetime.today().date()
+
+    # Connect to Airflow's metadata database using a PostgresHook
+    pg_hook = PostgresHook(postgres_conn_id='your_postgres_conn_id')
+
+    # Write your SQL query to retrieve DAGs triggered today with their status
+    query = f"""
+    SELECT dag_id, execution_date, state
+    FROM dag_run
+    WHERE execution_date::date = '{today}'
+    """
+
+    results = pg_hook.get_records(query)
+
+    # Display the list of DAGs triggered today with status in table format
+    table = [['DAG ID', 'Execution Date', 'Status']]
+    for row in results:
+        dag_id, execution_date, state = row
+        table.append([dag_id, execution_date, state])
+
+    # Print the table
+    print(tabulate(table, headers='firstrow', tablefmt='pretty'))
+
+run_query_task = PythonOperator(
+    task_id='run_query',
+    python_callable=query_postgres_and_display_dags,
+    provide_context=True,
+    dag=dag,
+)
+
+if __name__ == "__main__":
+    dag.cli()
