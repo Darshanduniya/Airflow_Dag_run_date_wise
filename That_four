@@ -1,0 +1,52 @@
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime
+from airflow.hooks.postgres_hook import PostgresHook
+
+# Define your PostgreSQL connection URI within your code
+postgres_conn_uri = "postgresql://your_username:your_password@your_postgres_host:5432/your_database_schema"
+
+# Create a custom PostgresHook without specifying a connection ID
+custom_pg_hook = PostgresHook(sql_conn_id='', postgres_conn_id='my_custom_postgres_conn', conn_type='Postgres', conn_uri=postgres_conn_uri)
+
+# Define your DAG
+default_args = {
+    'owner': 'your_name',
+    'start_date': datetime(2023, 10, 11),
+    'retries': 1,
+}
+
+dag = DAG(
+    'query_postgres_and_display_dags',
+    default_args=default_args,
+    schedule_interval=None,  # You can set an appropriate schedule interval here
+)
+
+def query_postgres_and_display_dags(**kwargs):
+    today = datetime.today().date()
+
+    # Use the custom PostgresHook without specifying a connection ID
+    pg_hook = custom_pg_hook
+
+    # Write your SQL query to retrieve DAGs triggered today with their status
+    query = f"""
+    SELECT dag_id, execution_date, state
+    FROM dag_run
+    WHERE execution_date::date = '{today}'
+    """
+
+    results = pg_hook.get_records(query)
+
+    # Display the results
+    for row in results:
+        print(row)
+
+run_query_task = PythonOperator(
+    task_id='run_query',
+    python_callable=query_postgres_and_display_dags,
+    provide_context=True,
+    dag=dag,
+)
+
+if __name__ == "__main__":
+    dag.cli()
