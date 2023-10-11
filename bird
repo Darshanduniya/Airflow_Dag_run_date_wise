@@ -1,0 +1,55 @@
+from airflow import AirflowException
+from airflow.utils.db import create_session
+from sqlalchemy import select, func
+from airflow.models import DagRun
+
+def connect_to_airflow_metadata_postgres():
+    """Connects to the Airflow metadata PostgreSQL database.
+
+    Returns:
+        A SQLAlchemy session object.
+    """
+
+    try:
+        session = create_session()
+    except AirflowException as e:
+        raise AirflowException(f"Failed to connect to Airflow metadata PostgreSQL database: {e}")
+    return session
+
+def get_top_5_dag_runs(session):
+    """Gets the top 5 DAG runs from the Airflow metadata PostgreSQL database.
+
+    Args:
+        session: A SQLAlchemy session object.
+
+    Returns:
+        A list of DagRun objects.
+    """
+
+    query = select(DagRun).order_by(func.desc(DagRun.execution_date)).limit(5)
+    dag_runs = session.execute(query).scalars().all()
+    return dag_runs
+
+default_args = {
+    'start_date': airflow.utils.dates.days_ago(2),
+    'retries': 1,
+}
+
+dag = DAG('get_top_5_dag_runs', default_args=default_args, schedule_interval='@daily')
+
+metadata_connection_details = {
+    'host': 'localhost',
+    'port': 5432,
+    'database': 'airflow',
+    'user': 'airflow',
+    'password': 'airflow_password'
+}
+
+get_top_5_dag_runs_task = PythonOperator(
+    task_id='get_top_5_dag_runs',
+    python_callable=get_top_5_dag_runs,
+    op_kwargs={'session': connect_to_airflow_metadata_postgres(), 'metadata_connection_details': metadata_connection_details},
+    dag=dag
+)
+
+get_top_5_dag_runs_task
